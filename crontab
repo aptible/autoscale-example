@@ -1,0 +1,2 @@
+0,15,30,45 * * * * /opt/app/scale --app scaling-example-app --service cmd --container-size 512 --container-count 2
+5,20,35,50 * * * * /opt/app/scale --app scaling-example-app --service cmd --container-size 1024 --container-count 1

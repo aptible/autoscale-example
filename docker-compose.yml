@@ -1,0 +1,15 @@
+version: "3.3"
+services:
+  autoscale:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes:
+      - type: bind
+        source: .
+        target: /opt/app
+    environment:
+      APTIBLE_USERNAME: ${APTIBLE_USERNAME}
+      APTIBLE_PASSWORD: ${APTIBLE_PASSWORD}
+    restart: always

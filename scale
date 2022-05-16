@@ -1,0 +1,151 @@
+#!/usr/local/bin/python
+
+import argparse
+import json
+import logging
+import os
+import subprocess
+import sys
+
+logger = logging.getLogger()
+logging.basicConfig(
+    stream=sys.stdout, level=logging.INFO
+)
+
+parser = argparse.ArgumentParser(description='Scale an Aptible App.')
+
+parser.add_argument(
+    '--app',
+    type=str, required=True,
+    help='The App to be scaled.'
+)
+parser.add_argument(
+    '--service',
+    type=str, required=True,
+    help='The Service to be scaled.'
+)
+
+
+parser.add_argument(
+    '--environment',
+    type=str,
+    help='The Environment containing the App. If left blank, and multiple apps have the same name, scaling will fail.'
+)
+parser.add_argument(
+    '--container-size',
+    type=int,
+    help='The size of containers to scale to in MB. If left blank, the existing size will be used.'
+)
+parser.add_argument(
+    '--container-count',
+    type=int,
+    help='Number of containers to scale to. If left blank, the existing size will be used.'
+)
+
+parser.add_argument(
+    '--retries',
+    type=int, default=0,
+    help='The number of times to retry when a scaling operation fails. Defaults to 0 (never retry).'
+)
+
+
+def main():
+    args = parser.parse_args()
+    login()
+    scale(args, args.retries)
+
+
+def login():
+    cmd = [
+        "aptible", "login",
+        "--email", os.environ['APTIBLE_USERNAME'],
+        "--password", os.environ['APTIBLE_PASSWORD'],
+        "--lifetime", "60m"
+    ]
+    logger.debug(cmd)
+    result = subprocess.run(cmd)
+    logger.debug(result)
+
+
+def notify_failure(msg):
+    logger.error(msg)
+
+
+def scale(args, retries_remaining):
+    cmd = [
+        "aptible", "apps:scale",
+        "--app", args.app, args.service
+    ]
+
+    if args.environment:
+        cmd.extend([
+            "--environment", args.environment
+        ])
+    if args.container_count:
+        cmd.extend([
+            "--container-count", str(args.container_count)
+        ])
+    if args.container_size:
+        cmd.extend([
+            "--container-size", str(args.container_size)
+        ])
+    logger.debug(cmd)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        logger.debug(result)
+        logger.warning("Could not scale app. Exit code was %d" % (result.returncode))
+        [logger.warning("STDOUT: %s" % (l.strip())) for l in result.stdout.split(b'\n')]
+        [logger.warning("STDERR: %s" % (l.strip())) for l in result.stderr.split(b'\n')]
+        retries_remaining -= 1
+        if retries_remaining < 0:
+            raise Exception("Could not scale app %s in %d retries" % (args.app, args.retries))
+        return scale(args, retries_remaining)
+    [logger.info(l.strip()) for l in result.stdout.split(b'\n')]
+    [logger.info(l.strip()) for l in result.stderr.split(b'\n')]
+
+    container_count, container_size = verify(args)
+
+    if args.container_count:
+        if args.container_count != container_count:
+            logger.warning("Container count incorrect. Expected %d, got %d" % (args.container_count, container_count))
+            retries_remaining -= 1
+            if retries_remaining < 0:
+                raise Exception("Could not scale app %s in %d retries" % (args.app, args.retries))
+            return scale(args, retries_remaining)
+
+    if args.container_size:
+        if args.container_size != container_size:
+            logger.warning("Container size incorrect. Expected %d, got %d" % (args.container_size, container_size))
+            retries_remaining -= 1
+            if retries_remaining < 0:
+                raise Exception("Could not scale app %s in %d retries" % (args.app, args.retries))
+            return scale(args, retries_remaining)
+    return
+
+
+def verify(args):
+    cmd = ["aptible", "apps"]
+    if args.environment:
+        cmd.extend([
+            "--environment", args.environment
+        ])
+    logger.debug(cmd)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE)
+    logger.debug(result)
+    apps = json.loads(result.stdout)
+
+    app_matches = [a for a in apps if a['handle'] == args.app]
+    if len(app_matches) != 1:
+        raise Exception("Something went wrong! Wrong number of app matches: %d" % len(app_matches))
+    app = app_matches[0]
+
+    service_matches = [s for s in app['services'] if s['service'] == args.service]
+    if len(service_matches) != 1:
+        raise Exception("Something went wrong! Wrong number of service matches: %d" % len(service_matches))
+    service = service_matches[0]
+
+    return service['container_count'], service['container_size']
+
+
+if __name__ == '__main__':
+    main()
