@@ -67,8 +67,8 @@ def login():
     logger.debug(result)
 
 
-def notify_failure(msg):
-    logger.error(msg)
+def notify_failure():
+    return
 
 
 def scale(args, retries_remaining):
@@ -98,7 +98,7 @@ def scale(args, retries_remaining):
         [logger.warning("STDERR: %s" % (l.strip())) for l in result.stderr.split(b'\n')]
         retries_remaining -= 1
         if retries_remaining < 0:
-            notify_failure('')
+            notify_failure()
             raise Exception("Could not scale app %s in %d retries" % (args.app, args.retries))
         return scale(args, retries_remaining)
     [logger.info(l.strip()) for l in result.stdout.split(b'\n')]
@@ -110,7 +110,7 @@ def scale(args, retries_remaining):
         logger.warning("Container count incorrect. Expected %d, got %d" % (args.container_count, container_count))
         retries_remaining -= 1
         if retries_remaining < 0:
-            notify_failure('')
+            notify_failure()
             raise Exception("Could not scale app %s in %d retries" % (args.app, args.retries))
         return scale(args, retries_remaining)
 
@@ -118,10 +118,9 @@ def scale(args, retries_remaining):
         logger.warning("Container size incorrect. Expected %d, got %d" % (args.container_size, container_size))
         retries_remaining -= 1
         if retries_remaining < 0:
-            notify_failure('')
+            notify_failure()
             raise Exception("Could not scale app %s in %d retries" % (args.app, args.retries))
         return scale(args, retries_remaining)
-    return
 
 
 def verify(args):
@@ -135,7 +134,7 @@ def verify(args):
     if result.returncode != 0:
         [logger.warning("STDOUT: %s" % (l.strip())) for l in result.stdout.split(b'\n')]
         [logger.warning("STDERR: %s" % (l.strip())) for l in result.stderr.split(b'\n')]
-        notify_failure('')
+        notify_failure()
         raise Exception("Could not scale app %s. Unable to verify scaling results." % args.app)
 
     logger.debug(result)
@@ -143,18 +142,18 @@ def verify(args):
         apps = json.loads(result.stdout)
     except Exception:
         logger.error("Could not scale app %s. Unable to parse result: %s" % (args.app, result.stdout))
-        notify_failure('')
+        notify_failure()
         raise
 
     app_matches = [a for a in apps if a['handle'] == args.app]
     if len(app_matches) != 1:
-        notify_failure('')
+        notify_failure()
         raise Exception("Something went wrong! Wrong number of app matches: %d" % len(app_matches))
     app = app_matches[0]
 
     service_matches = [s for s in app['services'] if s['service'] == args.service]
     if len(service_matches) != 1:
-        notify_failure('')
+        notify_failure()
         raise Exception("Something went wrong! Wrong number of service matches: %d" % len(service_matches))
     service = service_matches[0]
 
